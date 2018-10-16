@@ -75,12 +75,14 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
 }
 
 static ssize_t dev_write(struct file *filep, const char * buffer, size_t len, loff_t *offset) {
+	printk("CHE\n");
 	sprintf(message, "%s", buffer);
+	message[len-1] = 0;
 	printk("Counter: received %d chars\n", len);
-	printk("Recevide: %s\n", message);
+	printk("Recevide: %s", message);
 
-	if (f == NULL && strncmp(message, "open work_file", 9) == 0) {
-		f = filp_open(file, O_CREAT | O_RDWR, 0666);
+	if (f == NULL && strncmp(message, "open", 4) == 0) {
+		f = filp_open(message + 5, O_CREAT | O_RDWR, 0666);
 		write_pos = 0;
 
 		printk("Counter: file opened.\n");
