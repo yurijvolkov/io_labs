@@ -1,9 +1,17 @@
-#include <linux/init.h>
-#include <linux/module.h>
 #include <linux/fs.h>
+#include <linux/cdev.h>
+#include <linux/types.h>
+#include <linux/atomic.h>
 #include <linux/device.h>
+#include <linux/module.h>
+#include <linux/kdev_t.h>
 #include <linux/kernel.h>
-#include <linux/uaccess.h>
+#include <linux/version.h>
+
+#include <asm/segment.h>
+#include <asm/uaccess.h>
+#include <linux/buffer_head.h>
+
 
 #define DEVICE_NAME "counter_dev_"
 #define CLASS_NAME "counter_class_"
@@ -62,42 +70,56 @@ static int dev_release(struct inode* inodep, struct file* filep){
 	printk("Counter: device released.\n");
 	return 0;
 }
-static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *offset){
-	printk("In dev read\n");
-	if (f != NULL){
-		printk("In if\n");
-		write_pos_zero = 0;
-		kernel_read(f, message, 2, &write_pos_zero);
-		printk("READED: %s\n", message);
-		copy_to_user(buffer, message, strlen(message));
-		return 0;
-	}	
+
+static ssize_t var10_read(struct file *f, char __user *buf, size_t len, loff_t *off) {
+	ssize_t answer = kernel_read(f, buf, len, off);
+	buf[answer] = 0;
+	printk(KERN_INFO "%s", buf);
+	return answer;
 }
 
+static ssize_t dev_read(struct file *f_, char __user *buf, size_t len, loff_t *off)
+{
+	if(f != NULL) {
+		char *buffer = kvmalloc(len + 1, GFP_USER);
+		ssize_t answer;
+		while(answer = var10_read(f, buffer, len, off) > 0);
+		kvfree(buffer);
+		return answer;
+	}
+	return 0;
+}
 static ssize_t dev_write(struct file *filep, const char * buffer, size_t len, loff_t *offset) {
-	printk("CHE\n");
 	sprintf(message, "%s", buffer);
 	message[len-1] = 0;
 	printk("Counter: received %d chars\n", len);
 	printk("Recevide: %s", message);
 
-	if (f == NULL && strncmp(message, "open", 4) == 0) {
-		f = filp_open(message + 5, O_CREAT | O_RDWR, 0666);
-		write_pos = 0;
+	if ( strncmp(message, "open", 4) == 0) {
+		if (f == NULL) {
+			f = filp_open(message + 5, O_CREAT | O_RDWR, 0666);
+			write_pos = 0;
+			printk("Counter: file opened.\n");
+		}
+		else {
+			printk("File already opened.\n");
+		}
 
-		printk("Counter: file opened.\n");
-		return len;
+	} else if ( strncmp(message, "close", 5) == 0) {
+		if (f != NULL)
+			filp_close(f, NULL);
+		else 
+			printk("File not opened");
+	} else {
+		if (f != NULL) {
+			printk("Writing to file.\n");	
+			sprintf(message, "%d\n", len-1);
+			kernel_write(f, message, strlen(message), &write_pos);
+		}
+		else 
+			printk("Writing to closed file.");
 	}
-	
-	if (f != NULL) {
-		printk("Writing to file.\n");	
-		sprintf(message, "%d\n", len-1);
-		kernel_write(f, message, strlen(message), &write_pos);
 
-		return len;
-	}
-
-	printk("Writing to closed file!\n");
 	return len;
 }
 
