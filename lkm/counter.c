@@ -26,6 +26,10 @@ static int major_number;
 static struct class*  counter_class  = NULL;
 static struct device* counter_device = NULL;
 loff_t write_pos = 0;
+loff_t write_pos_zero = 0;
+char* file = "/etc/work_file";
+struct file *f = NULL;
+static char   message[256] = {0};
 
 static int __init counter_init(void) {
 	printk("Counter: Initialization started.\n");
@@ -36,15 +40,6 @@ static int __init counter_init(void) {
 	counter_device = device_create(counter_class, NULL, MKDEV(major_number, 0),
 				       NULL, DEVICE_NAME);
 	printk("Counter: device created correctly.\n");
-
-	char* file = "/etc/work_file";
-	struct file *f;
-	f = filp_open(file, O_CREAT | O_RDWR, 0666);
-	printk("Counter: file opened.\n");
-
-	kernel_write(f, "text", 4, &write_pos);
-	printk("Counter: written.\n");
-
 
 
 	return 0;
@@ -59,7 +54,52 @@ static void __exit counter_exit(void) {
 }
 
 static int dev_open(struct inode* inodep, struct file* filep){
-	printk("Counter: device opened.
+	printk("Counter: device opened.\n");
+	return 0;
+}
+
+static int dev_release(struct inode* inodep, struct file* filep){
+	printk("Counter: device released.\n");
+	return 0;
+}
+static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *offset){
+	printk("In dev read\n");
+	if (f != NULL){
+		printk("In if\n");
+		write_pos_zero = 0;
+		kernel_read(f, message, 2, &write_pos_zero);
+		printk("READED: %s\n", message);
+		copy_to_user(buffer, message, strlen(message));
+		return 0;
+	}	
+}
+
+static ssize_t dev_write(struct file *filep, const char * buffer, size_t len, loff_t *offset) {
+	sprintf(message, "%s", buffer);
+	printk("Counter: received %d chars\n", len);
+	printk("Recevide: %s\n", message);
+
+	if (f == NULL && strncmp(message, "open work_file", 9) == 0) {
+		f = filp_open(file, O_CREAT | O_RDWR, 0666);
+		write_pos = 0;
+
+		printk("Counter: file opened.\n");
+		return len;
+	}
+	
+	if (f != NULL) {
+		printk("Writing to file.\n");	
+		sprintf(message, "%d\n", len-1);
+		kernel_write(f, message, strlen(message), &write_pos);
+
+		return len;
+	}
+
+	printk("Writing to closed file!\n");
+	return len;
+}
+
+
 
 module_init(counter_init);
 module_exit(counter_exit);
